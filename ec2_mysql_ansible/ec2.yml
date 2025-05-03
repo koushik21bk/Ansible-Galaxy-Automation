@@ -11,9 +11,9 @@
     subnet_id: #SUBNET_ID
     security_group: #SEC_GRP_NAME
     iam_instance_profile: #ROLE_NAME
-    instance_count: 5
+    instance_count: #GIVE INSTANCES WANT TO CREATE
     instance_name_prefix: #INSTANCE_NAME 
-    ansible_ssh_user: ubuntu
+    ansible_ssh_user: #GIVE YOUR Platform name, ALimux, Ubuntu etc
 
   tasks:
     - name: Launch EC2 Instances with unique names
