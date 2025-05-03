@@ -1,0 +1,84 @@
+- name: Launch EC2 and install MySQL
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    key_name: #GIVE_KEYPAIR_NAME
+    region: #REGION
+    ami: #AMI_ID
+    instance_type: t2.micro
+    subnet_id: #SUBNET_ID
+    security_group: #SEC_GRP_NAME
+    iam_instance_profile: #ROLE_NAME
+    instance_count: 5
+    instance_name_prefix: #INSTANCE_NAME 
+    ansible_ssh_user: ubuntu
+
+  tasks:
+    - name: Launch EC2 Instances with unique names
+      amazon.aws.ec2_instance:
+        region: "{{ region }}"
+        key_name: "{{ key_name }}"
+        image_id: "{{ ami }}"
+        instance_type: "{{ instance_type }}"
+        count: "{{ instance_count }}"
+        wait: yes
+        vpc_subnet_id: "{{ subnet_id }}"
+        security_groups: "{{ security_group }}"
+        iam_instance_profile: "{{ iam_instance_profile }}"
+        tags:
+          Name: "{{ instance_name_prefix }}"
+          Environment: Ansible
+        network:
+          assign_public_ip: yes
+      register: ec2
+
+    - name: Debug EC2 instance details (optional)
+      debug:
+        var: ec2.instancesyes
+
+    - name: Wait for EC2 instance initialization
+      pause:
+        seconds: 120
+      when: ec2.instances | length > 0
+
+    - name: Add launched EC2 instances to dynamic group using public IP
+      add_host:
+        name: "{{ item.network_interfaces[0].association.public_ip }}"
+        groups: ec2_dynamic
+        ansible_user: "{{ ansible_ssh_user }}"
+        ansible_ssh_private_key_file: ~/.ssh/#KEYPAIRNAME.pem   #GIVE_KEYPAIR_NAME_IN_SMALL
+        ansible_ssh_common_args: '-o StrictHostKeyChecking=n o'
+      loop: "{{ ec2.instances }}"
+      when: item.network_interfaces[0].association.public_ip is defined
+
+    - name: Debug public IPs of launched instances
+      debug:
+        msg: "Adding {{ item.network_interfaces[0].association.public_ip }} to dynamic group"
+      loop: "{{ ec2.instances }}"
+      when: item.network_interfaces[0].association.public_ip is defined
+
+    - name: Wait for SSH to be ready
+      wait_for:
+        host: "{{ item.network_interfaces[0].association.public_ip }}"
+        port: 22
+        timeout: 180
+        state: started
+      loop: "{{ ec2.instances }}"
+      when: item.network_interfaces[0].association.public_ip is defined
+
+- name: Install MySQL on EC2 instances
+  hosts: ec2_dynamic
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    - name: Update APT cache
+      apt:
+        update_cache: yes
+
+    - name: Install MySQL Server
+      apt:
+        name: mysql-server
+        state: present
